@@ -108,7 +108,7 @@ HTML = """
             padding: 20px;
             margin-top: 15px;
             border: 1px solid rgba(255,255,255,0.05);
-            max-height: 500px;
+            max-height: 600px;
             overflow-y: auto;
         }
         .result-card h3 {
@@ -138,7 +138,49 @@ HTML = """
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .header h1 { font-size: 2rem; } }
+        .loader-container {
+            text-align: center;
+            padding: 30px;
+        }
+        .loader-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .loader-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #f093fb, #f5576c);
+            border-radius: 3px;
+            animation: fillLoader 2s ease-in-out forwards;
+        }
+        @keyframes fillLoader {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: rgba(255,255,255,0.05);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .stat-box .number { font-size: 1.5rem; font-weight: 700; color: #f5576c; }
+        .stat-box .label { font-size: 0.8rem; color: #888; }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 2rem; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 10px; }
         ::-webkit-scrollbar-thumb { background: #f5576c; border-radius: 10px; }
@@ -208,19 +250,27 @@ print("Average is: " + result)
 
             reviewBtn.disabled = true;
             reviewBtn.innerHTML = '<div class="loading"></div> Analyzing...';
-            resultDiv.innerHTML = '<div class="result-card"><div class="loading"></div> Waiting for response...</div>';
+
+            // Show loader with progress
+            resultDiv.innerHTML = `
+                <div class="result-card">
+                    <div class="loader-container">
+                        <div class="loading"></div>
+                        <p style="margin-top:10px;color:#888;">AI is analyzing your code...</p>
+                        <div class="loader-bar"><div class="loader-bar-fill"></div></div>
+                        <p style="font-size:0.8rem;color:#666;margin-top:5px;">This may take a few seconds</p>
+                    </div>
+                </div>
+            `;
 
             try {
-                console.log('Sending request...');
                 const response = await fetch('/review', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: code, language: lang })
                 });
 
-                console.log('Response status:', response.status);
                 const data = await response.json();
-                console.log('Data received:', data);
 
                 if (data.error) {
                     resultDiv.innerHTML = '<div class="result-card"><p style="color:#ff6b6b;">Error: ' + data.error + '</p></div>';
@@ -229,7 +279,6 @@ print("Average is: " + result)
                 }
 
             } catch (error) {
-                console.error('Error:', error);
                 resultDiv.innerHTML = '<div class="result-card"><p style="color:#ff6b6b;">Error: ' + error.message + '</p></div>';
             }
 
@@ -239,14 +288,23 @@ print("Average is: " + result)
 
         function formatResults(data) {
             let html = '<div class="result-card">';
+
+            // Extract stats from the analysis
+            let bugCount = 0;
+            let perfCount = 0;
+            let secCount = 0;
+
             const sections = data.answer.split(/\\n(?=[A-Z])/);
 
             sections.forEach(function(section) {
                 if (section.includes('Bugs')) {
+                    bugCount = countItems(section);
                     html += '<h3>Bugs Found</h3><ul>' + formatList(section) + '</ul>';
                 } else if (section.includes('Performance')) {
+                    perfCount = countItems(section);
                     html += '<h3>Performance Improvements</h3><ul>' + formatList(section) + '</ul>';
                 } else if (section.includes('Security')) {
+                    secCount = countItems(section);
                     html += '<h3>Security Issues</h3><ul>' + formatList(section) + '</ul>';
                 } else if (section.includes('Explanation')) {
                     html += '<h3>Code Explanation</h3><p>' + formatExplanation(section) + '</p>';
@@ -257,8 +315,33 @@ print("Average is: " + result)
                 }
             });
 
+            // Add stats at the top
+            html = `
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="number">${bugCount}</div>
+                        <div class="label">Bugs Found</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number">${perfCount}</div>
+                        <div class="label">Optimizations</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number">${secCount}</div>
+                        <div class="label">Security Issues</div>
+                    </div>
+                </div>
+            ` + html;
+
             html += '</div>';
             return html;
+        }
+
+        function countItems(section) {
+            const lines = section.split('\\n').filter(function(line) {
+                return line.match(/^[-*•]|\\d\\./);
+            });
+            return lines.length || 1;
         }
 
         function formatList(section) {
